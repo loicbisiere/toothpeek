@@ -244,6 +244,7 @@ struct ContentView: View {
             }
         }
         .frame(width: 480)
+        .background(GeometryReader { WindowFitter(size: $0.size) })
         .environment(\.locale, Locale(identifier: AppLanguage.resolved(language)))
     }
 
@@ -253,6 +254,25 @@ struct ContentView: View {
         }
         .buttonStyle(.borderless)
         .help(help)
+    }
+}
+
+/// The MenuBarExtra window grows with its content but keeps its height when the content shrinks
+/// (leaving settings, hiding details), so the content sits low under an empty band.
+/// Refit the window to the content, keeping its top edge under the menu bar.
+struct WindowFitter: NSViewRepresentable {
+    let size: CGSize
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { // the view has no window yet on first layout
+            guard let window = view.window else { return }
+            var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+            guard abs(frame.height - window.frame.height) > 0.5 else { return }
+            frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+            window.setFrame(frame, display: true)
+        }
     }
 }
 
