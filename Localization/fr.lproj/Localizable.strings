@@ -9,8 +9,10 @@
 "connection closed" = "connexion fermée";
 "bad frame size %lld" = "taille d'image invalide (%lld)";
 
-/* Menu bar window */
-"Open in a resizable window you can pin on top" = "Ouvrir dans une fenêtre redimensionnable, épinglable au premier plan";
+/* Menu bar icon */
+"Show the camera" = "Afficher la caméra";
+"Bring back under the icon" = "Ramener sous l'icône";
+"Settings…" = "Réglages…";
 "Settings" = "Réglages";
 "Quit Toothpeek" = "Quitter Toothpeek";
 
@@ -27,13 +29,16 @@
 "Open at login" = "Lancer à l'ouverture de session";
 "Approve in Login Items…" = "Autoriser dans Éléments d'ouverture…";
 "Login item: %@ (only works from Toothpeek.app)" = "Ouverture de session : %@ (fonctionne seulement depuis Toothpeek.app)";
-"Quit" = "Quitter";
 "Cancel" = "Annuler";
 "Save" = "Enregistrer";
 
 /* Camera window */
-"Unpin" = "Désépingler";
-"Keep on top of other windows" = "Garder au-dessus des autres fenêtres";
+"Not pinned" = "Non épinglée";
+"Pinned on this desktop" = "Épinglée sur ce bureau";
+"Pinned on all desktops" = "Épinglée sur tous les bureaux";
+"Not pinned · click to keep on top on this desktop" = "Non épinglée · cliquer pour la garder au premier plan sur ce bureau";
+"Pinned on this desktop · click to follow on all desktops" = "Épinglée sur ce bureau · cliquer pour la suivre sur tous les bureaux";
+"Pinned on all desktops · click to unpin" = "Épinglée sur tous les bureaux · cliquer pour désépingler";
 "Full screen (Esc to exit)" = "Plein écran (Échap pour quitter)";
 "Hide print info" = "Masquer les infos d'impression";
 "Show print info" = "Afficher les infos d'impression";
@@ -49,8 +54,6 @@
 "Paused" = "En pause";
 "Finished" = "Terminée";
 "Failed" = "Échec";
-"Details" = "Détails";
-"Hide details" = "Masquer les détails";
 "Time remaining" = "Temps restant";
 "Estimated end" = "Fin estimée";
 "Layer" = "Couche";

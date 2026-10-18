@@ -231,7 +231,6 @@ struct SettingsView: View {
             }
 
             HStack {
-                Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.borderless).foregroundStyle(.secondary)
                 Spacer()
                 if form.isConfigured {
                     Button("Cancel") { form.editing = false }.keyboardShortcut(.cancelAction)
@@ -242,6 +241,7 @@ struct SettingsView: View {
             }
         }
         .padding(14)
+        .frame(width: 480)
         .onAppear { discovery.start() }
         .onDisappear { discovery.stop() }
         .onReceive(discovery.$printers) { found in

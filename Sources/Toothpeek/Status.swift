@@ -32,15 +32,19 @@ final class PrinterStatus: ObservableObject {
     private var running = false
     private var lastState: State?
     private var offlineCheck: DispatchWorkItem?
+    /// A fake printer (dev builds, see Simulation) replaces the connection until endSimulation().
+    private(set) var simulated = false
 
     /// Starts unless already connected (or retrying) to this printer with this code.
     func ensureRunning(ip: String, accessCode: String) {
+        guard !simulated else { return }
         guard !running || ip != self.ip || accessCode != self.accessCode else { return }
         start(ip: ip, accessCode: accessCode)
     }
 
     /// Deliberate stop (window closed, no background monitoring): not an "offline" event.
     func stop() {
+        guard !simulated else { return }
         connection?.cancel()
         pingTimer?.invalidate()
         offlineCheck?.cancel()
@@ -108,6 +112,37 @@ final class PrinterStatus: ObservableObject {
         }
     }
 
+    /// Shows `report` as if the printer sent it, with the same state and online/offline callbacks (notifications).
+    func simulate(_ report: [String: Any], online: Bool = true, problem: String? = nil) {
+        connection?.cancel()
+        pingTimer?.invalidate()
+        offlineCheck?.cancel()
+        offlineCheck = nil
+        generation += 1
+        running = false
+        simulated = true
+        pendingLight = nil
+        commandError = nil
+        self.problem = problem
+        if let was = self.online, was != online { onOnlineChange?(online) }
+        self.online = online
+        self.report = report
+        lastReport = Date()
+        if let state {
+            if let lastState, lastState != state { onStateChange?(lastState, state) }
+            lastState = state
+        }
+    }
+
+    /// Back to the real printer: the next ensureRunning() connects.
+    func endSimulation() {
+        simulated = false
+        report = [:]
+        problem = nil
+        online = nil
+        lastState = nil
+    }
+
     // MARK: MQTT plumbing (just enough of 3.1.1 for one subscription)
 
     private func handle(_ header: UInt8, _ body: [UInt8], conn: NWConnection, gen: Int) {
@@ -157,9 +192,10 @@ final class PrinterStatus: ObservableObject {
 
     private var commandSequence = 0
 
-    var canSendCommands: Bool { accepted && lightOn != nil && pendingLight == nil }
+    var canSendCommands: Bool { (accepted || simulated) && lightOn != nil && pendingLight == nil }
 
     func setLight(_ on: Bool) {
+        if simulated { return report["lights_report"] = [["node": "chamber_light", "mode": on ? "on" : "off"]] }
         guard canSendCommands, let connection else { return }
         commandSequence += 1
         commandError = nil

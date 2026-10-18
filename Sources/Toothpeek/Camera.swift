@@ -17,18 +17,39 @@ final class Camera: ObservableObject {
     private var lastFrame = Date()
     private var trustFailure: PrinterTrust.Failure?
     private var running = false
+    private var simulated = false
 
     /// Starts unless already streaming from this printer with this code.
     func ensureRunning(ip: String, accessCode: String) {
+        guard !simulated else { return }
         guard !running || ip != self.ip || accessCode != self.accessCode else { return }
         start(ip: ip, accessCode: accessCode)
     }
 
     func stop() {
+        guard !simulated else { return }
         connection?.cancel()
         generation += 1
         running = false
         live = false
+    }
+
+    /// A still test frame instead of the stream (dev builds, see Simulation). No frame: a printer that cannot be reached.
+    func simulate(frame: Bool) {
+        connection?.cancel()
+        generation += 1
+        running = false
+        simulated = true
+        lastJPEG = frame ? Simulation.frame : nil
+        image = lastJPEG.flatMap(NSImage.init(data:))
+        status = frame ? "Simulated camera" : String(localized: "Connecting to \(Simulation.ip)…", bundle: AppLanguage.bundle)
+        live = frame
+    }
+
+    func endSimulation() {
+        simulated = false
+        live = false
+        image = nil
     }
 
     func start(ip: String, accessCode: String) {
