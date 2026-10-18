@@ -2,18 +2,24 @@
 
 A quick _peek_ at your 3D printer from the Mac menu bar: live camera, print progress and notifications. Built for Bambu Lab printers on your local network; so far it has only been tested on a P1S.
 
+<p align="center">
+  <img src="docs/images/window-compact.png" width="63%" alt="Toothpeek window, wide: camera image with the print progress and printer details on top of it">
+  <img src="docs/images/window-column.png" width="32%" alt="Toothpeek window, tall and narrow: camera image at the top, print progress and printer details below it">
+</p>
+<p align="center"><sub>A wide window shows the print info over the image, a tall one shows it underneath. Camera image from a P1S, print info simulated.</sub></p>
+
 Toothpeek is an independent project, not affiliated with or endorsed by Bambu Lab. "Bambu Lab" is a trademark of its owner, mentioned only to describe compatibility.
 
 **Why "Toothpeek"?** A toothpick is a tiny stick, often made of bamboo, that you barely notice. Say "toothpick" out loud and you hear "tooth-*peek*": a small tool for a quick peek at your printer.
 
 ## Features
 
-- **Live camera** in a menu bar popover, or in a detached window you can resize, pin above other windows and make full screen. Hover the image for a magnifier.
+- **Live camera** in a window you can resize, make full screen, and pin above other windows on its desktop or on all desktops. Hover the image for a magnifier.
+- **Menu bar icon** whose color follows the printer state. Click it to show the camera window, double-click it to bring the window back under the icon (handy when it is lost on another screen), right-click it for the menu.
 - **Print progress**: state, percent, time left, estimated end, layer, temperatures, fans, AMS spools.
 - **macOS notifications** when a print starts, pauses, resumes, is canceled, fails or finishes (with a camera snapshot), and when the printer goes online or offline.
 - **Light background monitoring**: status only (MQTT, a few KB). No video is pulled while no window is open.
-- **Menu bar icon** whose color follows the printer state.
-- **Chamber light switch** in the menu bar window.
+- **Chamber light switch** in the camera window.
 - **Update check**: once a day Toothpeek looks for a newer release on GitHub and tells you how to update (Homebrew command or download link). It never installs anything by itself.
 - Automatic printer discovery, English and French interface, optional launch at login.
 
@@ -31,7 +37,7 @@ Or download `Toothpeek-<version>.zip` from the [latest release](https://github.c
 
 **First launch:** Toothpeek is not notarized by Apple yet, so macOS blocks it the first time. Open Toothpeek once, then go to **System Settings > Privacy & Security** and click **Open Anyway**. macOS remembers the choice.
 
-Then click the Toothpeek icon in the menu bar and enter your printer's IP address and access code (or pick the printer found on your network).
+On first launch the window opens on the settings: enter your printer's IP address and access code (or pick the printer found on your network). Get back to them later with the gear button in the window, a right-click on the menu bar icon, or ⌘,.
 
 ## Requirements
 

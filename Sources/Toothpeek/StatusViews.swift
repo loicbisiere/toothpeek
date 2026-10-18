@@ -1,47 +1,7 @@
 import SwiftUI
 
-/// Print panel under the image in the menu bar window: summary + expandable details.
-struct PrintPanel: View {
-    @ObservedObject var status: PrinterStatus
-    @AppStorage("showPrintDetails") private var expanded = false
-
-    var body: some View {
-        if status.state == nil, let problem = status.problem {
-            ProblemRow(text: problem)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-        } else if status.state != nil {
-            VStack(alignment: .leading, spacing: 8) {
-                if let error = status.commandError {
-                    ProblemRow(text: error)
-                }
-                PrintSummary(status: status)
-                Button {
-                    withAnimation(.snappy) { expanded.toggle() }
-                } label: {
-                    HStack(spacing: 4) {
-                        expanded ? Text("Hide details") : Text("Details")
-                        Image(systemName: "chevron.down").rotationEffect(.degrees(expanded ? 180 : 0))
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if expanded {
-                    Divider()
-                    PrintDetails(status: status)
-                }
-            }
-            .padding(10)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
-        }
-    }
-}
-
-/// Everything over the image in the detached window, on a translucent dark card.
-/// Drops the details first when the window is too small for them.
+/// Print info in the camera window, on a translucent dark card, over or under the image.
+/// Over it, drops the details first when the image is too small for them.
 struct PrintOverlay: View {
     @ObservedObject var status: PrinterStatus
 

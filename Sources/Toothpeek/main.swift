@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 // `Toothpeek --snapshot out.jpg` grabs one frame and exits (uses BAMBU_IP / BAMBU_ACCESS_CODE).
@@ -100,29 +101,22 @@ if let i = CommandLine.arguments.firstIndex(of: "--check-update"), CommandLine.a
     dispatchMain()
 }
 
-ToothpeekApp.main()
+let appDelegate = AppDelegate() // NSApplication.delegate is weak: this global keeps it alive
+NSApplication.shared.delegate = appDelegate
+NSApp.run()
 
-struct ToothpeekApp: App {
-    @NSApplicationDelegateAdaptor private var delegate: AppDelegate
-
-    var body: some Scene {
-        MenuBarExtra {
-            ContentView(camera: delegate.camera, status: delegate.status, viewer: delegate.viewer, updates: delegate.updates)
-        } label: {
-            MenuBarLabel(status: delegate.status)
-        }
-        .menuBarExtraStyle(.window)
-    }
-}
-
-final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     let camera = Camera()
     let status = PrinterStatus()
-    let viewer = Viewer()
     let updates = UpdateChecker()
+    private let form = SettingsForm()
+    private lazy var viewer = Viewer(camera: camera, status: status, updates: updates, form: form)
     private lazy var notifier = Notifier(camera: camera)
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private var watches: [AnyCancellable] = []
+    private var simulation: Simulation?
 
-    // static, not main.swift globals: those are initialized in top-level order, i.e. after ToothpeekApp.main() runs.
+    // static, not main.swift globals: those are initialized in top-level order, i.e. after NSApp.run() starts.
     private static var iconCache: [String: NSImage] = [:]
 
     /// Printer frame with an eye and a print bed (same drawing as icon/make_icon.swift, redrawn for 18 pt).
@@ -151,12 +145,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return true
         }
         image.isTemplate = ring == nil
+        image.accessibilityDescription = "Toothpeek"
         iconCache[key] = image
         return image
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // menu bar only, no Dock icon
+        installMainMenu()
+        if let button = statusItem.button {
+            button.target = self
+            button.action = #selector(statusItemClicked)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        // receive(on:) runs after the change: @Published fires before the new value is stored.
+        watches.append(status.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self] in self?.updateIcon() })
+        updateIcon()
+        if form.editing { showSettings() } // first launch: nothing to show until the printer is set
         _ = notifier // create now: it is the notification center delegate and backs "Send a test notification"
         status.onStateChange = { [weak self] old, new in
             guard let self else { return }
@@ -179,6 +184,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             self.notifier.updateAvailable(release.version, homebrew: self.updates.installedWithHomebrew)
         }
         updates.start()
+        if updates.currentVersion == nil, let name = ProcessInfo.processInfo.environment["TOOTHPEEK_SIMULATE"] { // dev builds
+            simulation = Simulation.allCases.first { "\($0)" == name }
+            simulation?.apply(to: status, camera: camera)
+            if simulation != nil { viewer.show(under: iconFrame) }
+        }
         // Permission is per bundle id: re-ask if notifications are on but macOS has not decided yet (e.g. after a rename).
         if UserDefaults.standard.bool(forKey: Notifier.enabledKey) { Notifier.requestAuthorization { _ in } }
     }
@@ -197,96 +207,131 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     // Opening the app again (Finder, Spotlight) shows the camera window: a menu bar app has no other visible launch.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        viewer.show(camera: camera, status: status)
+        viewer.show(under: iconFrame)
         return false
     }
-}
 
-struct ContentView: View {
-    @ObservedObject var camera: Camera
-    let status: PrinterStatus
-    let viewer: Viewer
-    @ObservedObject var updates: UpdateChecker
-    @StateObject private var form = SettingsForm() // not @State: its macro plugin ships only with Xcode, not the CLT
-    @AppStorage(AppLanguage.key) private var language = "system"
-
-    var body: some View {
-        Group {
-            if form.editing {
-                SettingsView(form: form, updates: updates) // saving changes the defaults, which reconnects (AppDelegate.updateConnections)
-            } else {
-                VStack(spacing: 8) {
-                    if let image = camera.image {
-                        // Explicit 16:9 size: the menu bar window otherwise sizes itself from the image's tiny ideal size.
-                        CameraImage(image: image).frame(width: 460, height: 259)
-                    } else {
-                        ProgressView().frame(width: 460, height: 259)
-                    }
-                    PrintPanel(status: status)
-                    HStack(spacing: 6) {
-                        Circle().fill(camera.live ? Color.green : Color.orange).frame(width: 7, height: 7)
-                        Text(camera.status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        Spacer()
-                        LightButton(status: status)
-                        iconButton("macwindow.on.rectangle", help: "Open in a resizable window you can pin on top") {
-                            viewer.show(camera: camera, status: status)
-                        }
-                        iconButton("gearshape", help: updates.available == nil ? "Settings" : "Settings · update available") { form.edit() }
-                            .overlay(alignment: .topTrailing) {
-                                if updates.available != nil {
-                                    Circle().fill(Color.blue).frame(width: 6, height: 6).offset(x: -2, y: 1)
-                                }
-                            }
-                        iconButton("power", help: "Quit Toothpeek") { NSApp.terminate(nil) }
-                    }
-                }
-                .padding(10)
-            }
+    /// Menu bar icon whose frame follows the printer: color of the print state, dashed when offline,
+    /// plain (template) when idle or unknown.
+    private func updateIcon() {
+        let icon: NSImage
+        if status.online == false {
+            icon = Self.menuBarIcon(ring: nil, dashed: true)
+        } else if status.online == true, let state = status.state, state != .idle {
+            icon = Self.menuBarIcon(ring: NSColor(state.color))
+        } else {
+            icon = Self.menuBarIcon(ring: nil)
         }
-        .frame(width: 480)
-        .background(GeometryReader { WindowFitter(size: $0.size) })
-        .environment(\.locale, Locale(identifier: AppLanguage.resolved(language)))
+        statusItem.button?.image = icon
     }
 
-    private func iconButton(_ symbol: String, help: LocalizedStringKey, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).frame(width: 22, height: 18)
-        }
-        .buttonStyle(.borderless)
-        .help(help)
-    }
-}
+    private var iconFrame: NSRect? { statusItem.button?.window?.frame }
 
-/// The MenuBarExtra window grows with its content but keeps its height when the content shrinks
-/// (leaving settings, hiding details), so the content sits low under an empty band.
-/// Refit the window to the content, keeping its top edge under the menu bar.
-struct WindowFitter: NSViewRepresentable {
-    let size: CGSize
-
-    func makeNSView(context: Context) -> NSView { NSView() }
-
-    func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async { // the view has no window yet on first layout
-            guard let window = view.window else { return }
-            var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
-            guard abs(frame.height - window.frame.height) > 0.5 else { return }
-            frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
-            window.setFrame(frame, display: true)
+    /// Click: show the camera window where it was left. Double-click: bring it back under the icon,
+    /// for when it is lost on another screen. Right-click (or control-click): the menu.
+    @objc private func statusItemClicked() {
+        guard let event = NSApp.currentEvent else { return }
+        if event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
+            statusItem.menu = makeMenu()
+            statusItem.button?.performClick(nil) // opens the menu
+            statusItem.menu = nil // or left clicks would open it too
+        } else if event.clickCount == 2 {
+            viewer.recall(under: iconFrame)
+        } else {
+            viewer.show(under: iconFrame)
         }
     }
-}
 
-/// Menu bar icon whose frame follows the printer: color of the print state, dashed when offline,
-/// plain (template) when idle or unknown.
-struct MenuBarLabel: View {
-    @ObservedObject var status: PrinterStatus
+    private func makeMenu() -> NSMenu {
+        func item(_ title: String.LocalizationValue, _ action: Selector, key: String = "") -> NSMenuItem {
+            let item = NSMenuItem(title: String(localized: title, bundle: AppLanguage.bundle), action: action, keyEquivalent: key)
+            item.target = self
+            return item
+        }
+        let menu = NSMenu()
+        menu.addItem(item("Show the camera", #selector(showViewer)))
+        menu.addItem(item("Bring back under the icon", #selector(recallViewer)))
+        menu.addItem(.separator())
+        for pin in Viewer.Pin.allCases {
+            let entry = NSMenuItem(title: pin.title, action: #selector(setPin(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = pin.rawValue
+            entry.state = viewer.pin == pin ? .on : .off
+            menu.addItem(entry)
+        }
+        menu.addItem(.separator())
+        if let release = updates.available {
+            menu.addItem(item("Version \(release.version) available", #selector(showSettings)))
+        }
+        menu.addItem(item("Settings…", #selector(showSettings), key: ","))
+        if updates.currentVersion == nil { menu.addItem(simulationItem()) } // dev builds only
+        menu.addItem(.separator())
+        menu.addItem(item("Quit Toothpeek", #selector(NSApplication.terminate(_:)), key: "q"))
+        menu.items.last?.target = NSApp
+        return menu
+    }
 
-    var body: some View {
-        let icon: NSImage = {
-            if status.online == false { return AppDelegate.menuBarIcon(ring: nil, dashed: true) }
-            guard status.online == true, let state = status.state, state != .idle else { return AppDelegate.menuBarIcon(ring: nil) }
-            return AppDelegate.menuBarIcon(ring: NSColor(state.color))
-        }()
-        Image(nsImage: icon).renderingMode(icon.isTemplate ? .template : .original)
+    /// Dev tool, in English only: pick a fake printer state to test the UI without a printer.
+    private func simulationItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Simulate printer", action: nil, keyEquivalent: "")
+        let menu = NSMenu()
+        let real = NSMenuItem(title: "Off (real printer)", action: #selector(simulate(_:)), keyEquivalent: "")
+        real.target = self
+        real.state = simulation == nil ? .on : .off
+        menu.addItem(real)
+        menu.addItem(.separator())
+        for scenario in Simulation.allCases {
+            let entry = NSMenuItem(title: scenario.rawValue, action: #selector(simulate(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = scenario.rawValue
+            entry.state = simulation == scenario ? .on : .off
+            menu.addItem(entry)
+        }
+        item.submenu = menu
+        return item
+    }
+
+    @objc private func simulate(_ sender: NSMenuItem) {
+        simulation = (sender.representedObject as? String).flatMap(Simulation.init(rawValue:))
+        if let simulation {
+            simulation.apply(to: status, camera: camera)
+        } else {
+            status.endSimulation()
+            camera.endSimulation()
+            updateConnections()
+        }
+    }
+
+    @objc private func showViewer() { viewer.show(under: iconFrame) }
+    @objc private func recallViewer() { viewer.recall(under: iconFrame) }
+    @objc private func setPin(_ sender: NSMenuItem) {
+        if let pin = (sender.representedObject as? String).flatMap(Viewer.Pin.init(rawValue:)) { viewer.pin = pin }
+    }
+
+    @objc func showSettings() { viewer.showSettings(under: iconFrame) }
+
+    /// Never shown (menu bar app), but it is what routes ⌘, ⌘W ⌘Q and copy/paste in text fields.
+    private func installMainMenu() {
+        func submenu(_ items: [NSMenuItem]) -> NSMenuItem {
+            let item = NSMenuItem()
+            item.submenu = NSMenu()
+            items.forEach { item.submenu?.addItem($0) }
+            return item
+        }
+        let main = NSMenu()
+        main.addItem(submenu([
+            NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ","),
+            NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"),
+        ]))
+        main.addItem(submenu([
+            NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"),
+            NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"),
+            NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z"),
+            NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"),
+            NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"),
+            NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"),
+            NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"),
+        ]))
+        NSApp.mainMenu = main
     }
 }
