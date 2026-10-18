@@ -1,9 +1,9 @@
-import AppKit
+import Foundation
 
 /// Fake printer for dev builds: drives the UI, the menu bar icon and the notifications without a real printer.
 /// Picked from the menu bar icon's right-click menu ("Simulate printer"), never shown in release builds.
 /// For screenshots: TOOTHPEEK_SIMULATE=printing (a case name) starts on it, TOOTHPEEK_SIMULATE_FRAME=photo.jpg
-/// replaces the drawn camera frame.
+/// replaces the camera frame.
 enum Simulation: String, CaseIterable {
     case preparing = "Preparing"
     case printing = "Printing"
@@ -56,28 +56,9 @@ enum Simulation: String, CaseIterable {
         return base.merging(changes) { _, new in new }
     }
 
-    static let frame: Data? = ProcessInfo.processInfo.environment["TOOTHPEEK_SIMULATE_FRAME"]
-        .flatMap { FileManager.default.contents(atPath: $0) } ?? drawnFrame
-
-    /// Stand-in camera frame: a dark chamber with a print bed, labeled.
-    private static let drawnFrame: Data? = {
-        let size = NSSize(width: 1280, height: 720)
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSGradient(starting: NSColor(white: 0.28, alpha: 1), ending: NSColor(white: 0.07, alpha: 1))?
-            .draw(in: NSRect(origin: .zero, size: size), angle: -90)
-        NSColor(white: 0.4, alpha: 1).setFill()
-        NSBezierPath(roundedRect: NSRect(x: 240, y: 110, width: 800, height: 36), xRadius: 6, yRadius: 6).fill()
-        let label = "Simulated camera" as NSString
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 56, weight: .semibold), .foregroundColor: NSColor(white: 1, alpha: 0.55),
-        ]
-        let labelSize = label.size(withAttributes: attributes)
-        label.draw(at: NSPoint(x: (size.width - labelSize.width) / 2, y: 380), withAttributes: attributes)
-        NSGraphicsContext.restoreGraphicsState()
-        return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8])
-    }()
+    /// A real P1S frame (docs/images/simulated-camera.jpg), bundled in dev builds only. None under `swift run`:
+    /// the window then shows the camera status text.
+    static let frame: Data? = (ProcessInfo.processInfo.environment["TOOTHPEEK_SIMULATE_FRAME"]
+        ?? Bundle.main.path(forResource: "simulated-camera", ofType: "jpg"))
+        .flatMap { FileManager.default.contents(atPath: $0) }
 }

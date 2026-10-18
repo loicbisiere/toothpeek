@@ -21,6 +21,7 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp icon/AppIcon.icns "$app/Contents/Resources/"  # regenerate: swift icon/make_icon.swift
 cp -R Localization/*.lproj "$app/Contents/Resources/"
+case "$version" in *-*) cp docs/images/simulated-camera.jpg "$app/Contents/Resources/" ;; esac # printer simulator, dev builds only
 cp "$bin" "$app/Contents/MacOS/"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
